@@ -1,0 +1,11 @@
+id: "policy_v1"
+description: "简单二分类策略，仅基于违规概率 p_final"
+
+thresholds:
+  block: 0.9      # >=0.9 直接拦截
+  review: 0.7     # [0.7, 0.9) 进入人工复审
+
+action_mapping:
+  block: "block"
+  review: "review"
+  allow: "allow"

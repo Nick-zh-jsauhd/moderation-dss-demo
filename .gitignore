@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Logs & DB
+logs/
+*.log
+*.db
+
+# Data
+*.csv
+!policy_eval_data.csv   # demo / evaluation fixture
+
+# Models
+models/**/checkpoints/
+models/**/outputs/
+models/**/*.pt
+models/**/*.bin
+
+# OS
+.DS_Store
+Thumbs.db
