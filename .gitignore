@@ -1,27 +1,21 @@
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
 
-# Environment
-.env
-.env.*
-.streamlit/secrets.toml
+# Virtual env
+.venv/
+venv/
 
-# Logs & DB
+# Logs / cache
 logs/
-*.log
+.cache/
+
+# Databases (local only)
 *.db
 
-# Data
-*.csv
-!policy_eval_data.csv   # demo / evaluation fixture
+# ❌ 不要全局忽略 csv
+# *.csv   <-- 删掉这一行！
 
-# Models
-models/**/checkpoints/
-models/**/outputs/
-models/**/*.pt
-models/**/*.bin
-
-# OS
-.DS_Store
-Thumbs.db
+# ✅ 只忽略真正的训练/中间数据
+data/*.csv
+data/offline/*.csv

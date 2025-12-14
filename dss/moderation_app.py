@@ -36,21 +36,40 @@ st.set_page_config(
 )
 
 # ================== utils ==================
+def resolve_csv_path(p: str) -> str:
+    """
+    Robust CSV resolver for Streamlit local + Community Cloud.
+    Priority:
+      1) exact path
+      2) repo root / relative
+      3) ./data/
+      4) ./dss/
+    """
+    if not p:
+        raise FileNotFoundError("Empty csv path")
 
-def resolve_csv_path(csv_path: str) -> Path:
-    p = Path(csv_path)
-    if p.exists():
-        return p
+    cand = []
+    pp = Path(p)
 
-    # 常见兜底：data/
-    p2 = DATA_DIR / csv_path
-    if p2.exists():
-        return p2
+    # 1) as-is
+    cand.append(pp)
 
-    raise FileNotFoundError(
-        f"CSV not found: tried '{p}' and '{p2}'. "
-        f"Please check dataset path."
-    )
+    # 2) relative to repo root (assume this file is dss/moderation_app.py)
+    repo_root = Path(__file__).resolve().parents[1]
+    cand.append(repo_root / p)
+
+    # 3) common folders
+    cand.append(repo_root / "data" / pp.name)
+    cand.append(repo_root / "dss" / pp.name)
+
+    for c in cand:
+        if c.exists() and c.is_file():
+            return str(c)
+
+    # helpful debug
+    tried = "\n".join([str(x) for x in cand])
+    raise FileNotFoundError(f"CSV not found. Tried:\n{tried}")
+
 
 def _shorten(s: str, n: int = 48) -> str:
     if not isinstance(s, str):
@@ -113,28 +132,62 @@ def _seed_demo_traffic(n: int = 10):
         )
         handle_request(req)
 
-def _import_dataset_to_db(csv_path: str, n: int = 200):
+def _import_dataset_to_db(csv_path: str | None = None, n: int = 200):
     """
-    从 train/test CSV 批量回放到 DB：
-    - 每条样本走一次 handle_request -> 自动决策 -> 落库
-    - 这样 Review Console / Dashboard / Policy Simulator 都会有数据
+    固定回放仓库内置评估数据到 DB（不依赖用户输入路径）：
+    默认使用 repo root 的 policy_eval_data.csv；
+    若不存在，则使用 repo_root/data/policy_eval_data.csv；
+    若用户显式传入 csv_path 且可解析存在，则优先使用该路径（可保留灵活性，但不要求）。
     """
     import pandas as pd
+    from pathlib import Path
 
-    df = pd.read_csv(csv_path)
+    repo_root = Path(__file__).resolve().parents[1]
+
+    def _pick_csv() -> Path:
+        # 0) 若用户传入路径且存在：优先用（可选）
+        if csv_path:
+            p = Path(str(csv_path).strip())
+            if p.is_absolute() and p.exists():
+                return p
+            p2 = (repo_root / p).resolve()
+            if p2.exists():
+                return p2
+            p3 = (repo_root / "data" / p.name).resolve()
+            if p3.exists():
+                return p3
+
+        # 1) 固定默认：repo root
+        p = (repo_root / "policy_eval_data.csv").resolve()
+        if p.exists():
+            return p
+
+        # 2) 兜底：data/
+        p = (repo_root / "data" / "policy_eval_data.csv").resolve()
+        if p.exists():
+            return p
+
+        raise FileNotFoundError(
+            "Cannot find demo CSV. Expected one of:\n"
+            f"- {repo_root / 'policy_eval_data.csv'}\n"
+            f"- {repo_root / 'data' / 'policy_eval_data.csv'}"
+        )
+
+    csv_file = _pick_csv()
+    df = pd.read_csv(csv_file)
+
     if df.empty:
         return 0
 
-    # 兼容字段名：尽量从常见列里找 rule/text/label
-    # 你们的训练集通常包含 rule + text（或 body）
     rule_col = "rule" if "rule" in df.columns else None
     text_col = "text" if "text" in df.columns else ("body" if "body" in df.columns else None)
 
     if text_col is None:
-        raise ValueError(f"Cannot find text column in {csv_path}. columns={list(df.columns)}")
+        raise ValueError(f"Cannot find text column in {csv_file}. columns={list(df.columns)}")
 
     take = df.head(int(n)).copy()
     cnt = 0
+
     for _, r in take.iterrows():
         req = ModerationRequest(
             text=str(r[text_col]),
@@ -143,7 +196,9 @@ def _import_dataset_to_db(csv_path: str, n: int = 200):
         )
         handle_request(req)
         cnt += 1
+
     return cnt
+
 
 
 # ================== Page 1: Review Console ==================
